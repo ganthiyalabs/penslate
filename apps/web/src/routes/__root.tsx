@@ -2,13 +2,13 @@ import { Toaster } from '@/components/ui/sonner';
 
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 
+import Layout from '@/components/layout';
 import Loader from '@/components/loader';
 import { PWAInstall } from '@/components/pwa-install';
 import { registerSW } from '@/lib/pwa';
 import type { QueryClient } from '@tanstack/react-query';
 import {
   HeadContent,
-  Outlet,
   Scripts,
   createRootRouteWithContext,
   useRouterState,
@@ -110,9 +110,7 @@ function RootDocument() {
         <HeadContent />
       </head>
       <body>
-        <div className="grid h-svh grid-rows-[auto_1fr]">
-          {isFetching ? <Loader /> : <Outlet />}
-        </div>
+        {isFetching ? <Loader /> : <Layout />}
         <PWAInstall />
         <Toaster richColors />
         <TanStackRouterDevtools position="bottom-left" />
