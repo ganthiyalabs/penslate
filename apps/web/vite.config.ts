@@ -9,7 +9,9 @@ export default defineConfig({
   plugins: [
     tsconfigPaths(),
     tailwindcss(),
-    tanstackStart(),
+    tanstackStart({
+      preset: 'vercel'
+    }),
     viteReact(),
     VitePWA({
       registerType: 'autoUpdate',
