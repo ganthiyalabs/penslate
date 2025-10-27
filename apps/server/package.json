@@ -22,8 +22,9 @@
     "@sparktown/db": "workspace:*"
   },
   "devDependencies": {
-    "typescript": "catalog:",
     "@types/bun": "^1.2.6",
-    "tsdown": "catalog:"
+    "@types/node": "^24.9.1",
+    "tsdown": "catalog:",
+    "typescript": "catalog:"
   }
 }

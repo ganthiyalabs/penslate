@@ -8,6 +8,8 @@
       "@/*": ["./src/*"]
     },
     "jsx": "react-jsx",
-    "jsxImportSource": "hono/jsx"
+    "jsxImportSource": "hono/jsx",
+    "lib": ["ESNext", "DOM"],
+    "types": ["bun", "node"]
   }
 }
