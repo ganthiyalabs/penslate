@@ -67,7 +67,7 @@ const data = {
 
 function AppSidebar() {
   const [activeItem, setActiveItem] = React.useState(data.navMain[0]);
-  const { setOpen } = useSidebar();
+  const { setOpen, isMobile } = useSidebar();
 
   return (
     <Sidebar collapsible="icon" className="overflow-hidden *:data-[sidebar=sidebar]:flex-row">
@@ -99,7 +99,11 @@ function AppSidebar() {
                       }}
                       onClick={() => {
                         setActiveItem(item);
-                        setOpen(true);
+                        if (isMobile) {
+                          setOpen(false); // Close sidebar on mobile after selection
+                        } else {
+                          setOpen(true);
+                        }
                       }}
                       isActive={activeItem?.title === item.title}
                       className="px-2.5 md:px-2"
@@ -121,8 +125,8 @@ function AppSidebar() {
         </SidebarFooter>
       </Sidebar>
 
-      {/* Second sidebar - expanded content */}
-      <Sidebar collapsible="none" className="hidden flex-1 md:flex">
+      {/* Second sidebar - expanded content - hidden on mobile */}
+      <Sidebar collapsible="none" className="hidden flex-1 lg:flex">
         <SidebarHeader className="gap-3.5 border-b p-4">
           <div className="flex w-full items-center justify-between">
             <div className="text-foreground text-base font-medium">{activeItem?.title}</div>
@@ -148,12 +152,12 @@ export default function Layout() {
       <div className="flex min-h-screen w-full">
         <AppSidebar />
 
-        <div className="flex flex-1 flex-col">
-          <header className="flex h-12 items-center gap-4 border-b bg-background px-2">
+        <div className="flex flex-1 flex-col min-w-0">
+          <header className="flex h-12 items-center gap-2 sm:gap-4 border-b bg-background px-2 sm:px-4">
             <SidebarTrigger />
             <TopBar />
           </header>
-          <main className="flex-1 p-4">
+          <main className="flex-1 p-2 sm:p-4 overflow-auto">
             <Outlet />
           </main>
         </div>

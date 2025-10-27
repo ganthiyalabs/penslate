@@ -25,6 +25,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { useLocation } from '@tanstack/react-router';
 import {
   Bell,
@@ -32,6 +33,7 @@ import {
   CreditCard,
   Home,
   LogOut,
+  Search,
   Settings,
   User,
 } from 'lucide-react';
@@ -40,6 +42,7 @@ import { useState } from 'react';
 export default function TopBar() {
   const location = useLocation();
   const [commandOpen, setCommandOpen] = useState(false);
+  const isMobile = useIsMobile();
 
   // Generate breadcrumbs based on current route
   const generateBreadcrumbs = () => {
@@ -75,18 +78,20 @@ export default function TopBar() {
   const breadcrumbs = generateBreadcrumbs();
 
   return (
-    <div className="flex flex-1 items-center justify-between">
-      {/* Breadcrumbs on the left */}
-      <Breadcrumb>
+    <div className="flex flex-1 items-center justify-between gap-2 min-w-0">
+      {/* Breadcrumbs on the left - hide on mobile */}
+      <Breadcrumb className="hidden sm:block">
         <BreadcrumbList>
           {breadcrumbs.map((breadcrumb, index) => (
             <div key={breadcrumb.href} className="flex items-center">
               {index > 0 && <BreadcrumbSeparator />}
               <BreadcrumbItem>
                 {breadcrumb.isCurrent ? (
-                  <BreadcrumbPage>{breadcrumb.label}</BreadcrumbPage>
+                  <BreadcrumbPage className="truncate">{breadcrumb.label}</BreadcrumbPage>
                 ) : (
-                  <BreadcrumbLink href={breadcrumb.href}>{breadcrumb.label}</BreadcrumbLink>
+                  <BreadcrumbLink href={breadcrumb.href} className="truncate">
+                    {breadcrumb.label}
+                  </BreadcrumbLink>
                 )}
               </BreadcrumbItem>
             </div>
@@ -94,17 +99,24 @@ export default function TopBar() {
         </BreadcrumbList>
       </Breadcrumb>
 
+      {/* Mobile breadcrumb - show only current page */}
+      {isMobile && (
+        <div className="sm:hidden text-sm font-medium text-foreground truncate">
+          {breadcrumbs[breadcrumbs.length - 1]?.label || 'Home'}
+        </div>
+      )}
+
       {/* User icon and command bar on the right */}
-      <div className="flex items-center gap-2">
-        {/* Command Bar */}
+      <div className="flex items-center gap-2 flex-shrink-0">
+        {/* Command Bar - responsive width */}
         <div className="relative">
           <Input
-            placeholder="Search or type a command..."
-            className="w-64 pr-8 cursor-pointer h-8"
+            placeholder={isMobile ? 'Search...' : 'Search or type a command...'}
+            className="w-32 sm:w-48 md:w-64 pr-8 cursor-pointer h-8"
             readOnly
             onClick={() => setCommandOpen(true)}
           />
-          <CommandIcon className="absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          <Search className="absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
         </div>
 
         {/* User Menu */}
