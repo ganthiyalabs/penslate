@@ -14,7 +14,7 @@ import {
   SidebarTrigger,
   useSidebar,
 } from '@/components/ui/sidebar';
-import { Outlet } from '@tanstack/react-router';
+import { Link, Outlet } from '@tanstack/react-router';
 import { ArchiveX, Command, File, Home, Inbox, Send, Trash2 } from 'lucide-react';
 import * as React from 'react';
 
@@ -77,15 +77,11 @@ function AppSidebar() {
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton size="lg" asChild className="md:h-8 md:p-0">
-                <a href="/">
+                <Link to="/">
                   <div className="bg-sidebar-primary text-sidebar-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg">
                     <Command className="size-4" />
                   </div>
-                  <div className="grid flex-1 text-left text-sm leading-tight">
-                    <span className="truncate font-medium">SparkTown</span>
-                    <span className="truncate text-xs">Editor</span>
-                  </div>
-                </a>
+                </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
@@ -109,10 +105,10 @@ function AppSidebar() {
                       className="px-2.5 md:px-2"
                       asChild
                     >
-                      <a href={item.url}>
+                      <Link to={item.url}>
                         <item.icon />
                         <span>{item.title}</span>
-                      </a>
+                      </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}
@@ -153,7 +149,7 @@ export default function Layout() {
         <AppSidebar />
 
         <div className="flex flex-1 flex-col">
-          <header className="flex h-16 items-center gap-4 border-b bg-background px-4">
+          <header className="flex h-12 items-center gap-4 border-b bg-background px-2">
             <SidebarTrigger />
             <TopBar />
           </header>
