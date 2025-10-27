@@ -1,12 +1,21 @@
 {
   "version": 2,
   "buildCommand": "bun run build",
-  "outputDirectory": "dist",
+  "outputDirectory": "dist/client",
   "framework": "vite",
-  "rewrites": [
+  "functions": {
+    "api/index.js": {
+      "maxDuration": 30
+    }
+  },
+  "routes": [
     {
-      "source": "/(.*)",
-      "destination": "/api/index"
+      "src": "/assets/(.*)",
+      "dest": "/assets/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/api/index"
     }
   ]
 }
