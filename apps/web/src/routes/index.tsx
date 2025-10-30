@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import Layout from "@/components/layout";
 
 export const Route = createFileRoute("/")({
 	component: HomeComponent,
@@ -6,8 +7,8 @@ export const Route = createFileRoute("/")({
 
 function HomeComponent() {
 	return (
-		<div className="">
+        <Layout>
 			<h1>penslate</h1>
-		</div>
+        </Layout>
 	);
 }
