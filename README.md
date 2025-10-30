@@ -1,4 +1,4 @@
-# sparktown
+# penslate
 
 the modern collaborative markdown editor
 
