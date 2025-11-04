@@ -28,6 +28,7 @@
     "tw-animate-css": "^1.2.5",
     "vite-tsconfig-paths": "^5.1.4",
     "zod": "^4.0.2",
+    "nitro": "^3.0.1-alpha.0",
     "convex": "catalog:",
     "@convex-dev/react-query": "^0.0.0-alpha.8",
     "@penslate/backend": "workspace:*",
