@@ -1,6 +1,10 @@
 {
   "name": "@penslate/backend",
   "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    "./convex/*": "./convex/*"
+  },
   "scripts": {
     "dev": "convex dev",
     "dev:setup": "convex dev --configure --until-success"

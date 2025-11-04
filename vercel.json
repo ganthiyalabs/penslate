@@ -1,4 +1,8 @@
 {
+  "buildCommand": "turbo build --filter=web",
+  "installCommand": "bun install",
+  "outputDirectory": "apps/web/dist",
+  "rootDirectory": ".",
   "rewrites": [
     {
       "source": "/(.*)",
