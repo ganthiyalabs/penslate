@@ -5,7 +5,7 @@ node_modules
 
 # Build outputs (except what we need)
 apps/native
-packages/**
+packages/**/node_modules
 
 # Environment variables (handled by Vercel)
 .env
