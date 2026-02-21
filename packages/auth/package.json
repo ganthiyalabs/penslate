@@ -1,0 +1,24 @@
+{
+  "name": "@penslate/auth",
+  "type": "module",
+  "exports": {
+    ".": {
+      "default": "./src/index.ts"
+    },
+    "./*": {
+      "default": "./src/*.ts"
+    }
+  },
+  "scripts": {},
+  "dependencies": {
+    "@penslate/db": "workspace:*",
+    "@penslate/env": "workspace:*",
+    "better-auth": "catalog:",
+    "dotenv": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@penslate/config": "workspace:*",
+    "typescript": "catalog:"
+  }
+}

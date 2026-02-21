@@ -1,53 +1,72 @@
-import { createRouter as createTanStackRouter } from "@tanstack/react-router";
-import { QueryClient } from "@tanstack/react-query";
-import { routerWithQueryClient } from "@tanstack/react-router-with-query";
-import { ConvexQueryClient } from "@convex-dev/react-query";
-import { ConvexProvider, ConvexReactClient } from "convex/react";
-import { routeTree } from "./routeTree.gen";
-import Loader from "./components/loader";
+import type { AppRouter } from "@penslate/api/routers/index";
+
+import { env } from "@penslate/env/web";
+
 import "./index.css";
+import { QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createRouter as createTanStackRouter } from "@tanstack/react-router";
+import { createTRPCClient, httpBatchLink } from "@trpc/client";
+import { createTRPCOptionsProxy } from "@trpc/tanstack-react-query";
+import { toast } from "sonner";
 
-export function getRouter() {
-	const CONVEX_URL = (import.meta as any).env.VITE_CONVEX_URL!;
-	if (!CONVEX_URL) {
-		console.error("missing envar VITE_CONVEX_URL");
-	}
-	const convex = new ConvexReactClient(CONVEX_URL, {
-		unsavedChangesWarning: false,
-	});
+import Loader from "./components/loader";
+import { routeTree } from "./routeTree.gen";
+import { TRPCProvider } from "./utils/trpc";
 
-	const convexQueryClient = new ConvexQueryClient(convex);
+export const queryClient = new QueryClient({
+  queryCache: new QueryCache({
+    onError: (error, query) => {
+      toast.error(error.message, {
+        action: {
+          label: "retry",
+          onClick: query.invalidate,
+        },
+      });
+    },
+  }),
+  defaultOptions: { queries: { staleTime: 60 * 1000 } },
+});
 
-	const queryClient: QueryClient = new QueryClient({
-		defaultOptions: {
-			queries: {
-				queryKeyHashFn: convexQueryClient.hashFn(),
-				queryFn: convexQueryClient.queryFn(),
-			},
-		},
-	});
-	convexQueryClient.connect(queryClient);
+const trpcClient = createTRPCClient<AppRouter>({
+  links: [
+    httpBatchLink({
+      url: `${env.VITE_SERVER_URL}/trpc`,
+      fetch(url, options) {
+        return fetch(url, {
+          ...options,
+          credentials: "include",
+        });
+      },
+    }),
+  ],
+});
 
-	const router = routerWithQueryClient(
-		createTanStackRouter({
-			routeTree,
-			defaultPreload: "intent",
-			defaultPendingComponent: () => <Loader />,
-			defaultNotFoundComponent: () => <div>Not Found</div>,
-			context: { queryClient, convexClient: convex, convexQueryClient },
-			Wrap: ({ children }) => (
-				<ConvexProvider client={convexQueryClient.convexClient}>
-					{children}
-				</ConvexProvider>
-			),
-		}),
-		queryClient,
-	);
-	return router;
-}
+const trpc = createTRPCOptionsProxy({
+  client: trpcClient,
+  queryClient: queryClient,
+});
+
+export const getRouter = () => {
+  const router = createTanStackRouter({
+    routeTree,
+    scrollRestoration: true,
+    defaultPreloadStaleTime: 0,
+    context: { trpc, queryClient },
+    defaultPendingComponent: () => <Loader />,
+    defaultNotFoundComponent: () => <div>Not Found</div>,
+    Wrap: ({ children }) => (
+      <QueryClientProvider client={queryClient}>
+        <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
+          {children}
+        </TRPCProvider>
+      </QueryClientProvider>
+    ),
+  });
+  return router;
+};
 
 declare module "@tanstack/react-router" {
-	interface Register {
-		router: ReturnType<typeof getRouter>;
-	}
+  interface Register {
+    router: ReturnType<typeof getRouter>;
+  }
 }
