@@ -7,6 +7,7 @@ import {
   index,
   uniqueIndex,
   boolean,
+  integer,
 } from "drizzle-orm/pg-core";
 
 import { user } from "./auth";
@@ -45,6 +46,29 @@ export const projectMembers = pgTable(
   (table) => [
     uniqueIndex("project_members_project_user_idx").on(table.projectId, table.userId),
     index("project_members_userId_idx").on(table.userId),
+  ],
+);
+
+export const projectInvites = pgTable(
+  "project_invites",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    token: text("token").notNull().unique(),
+    role: text("role", { enum: projectRoles }).notNull().default("editor"),
+    expiresAt: timestamp("expires_at"),
+    maxUses: integer("max_uses"),
+    useCount: integer("use_count").default(0).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("project_invites_token_idx").on(table.token),
+    index("project_invites_projectId_idx").on(table.projectId),
   ],
 );
 
@@ -121,9 +145,24 @@ export const comments = pgTable(
 
 export const projectsRelations = relations(projects, ({ many }) => ({
   members: many(projectMembers),
+  invites: many(projectInvites),
   folders: many(folders),
   files: many(files),
 }));
+
+export const projectInvitesRelations = relations(
+  projectInvites,
+  ({ one }) => ({
+    project: one(projects, {
+      fields: [projectInvites.projectId],
+      references: [projects.id],
+    }),
+    creator: one(user, {
+      fields: [projectInvites.createdBy],
+      references: [user.id],
+    }),
+  })
+);
 
 export const projectMembersRelations = relations(
   projectMembers,

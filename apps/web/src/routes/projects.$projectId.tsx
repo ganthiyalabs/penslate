@@ -3,15 +3,34 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 
 import { getUser } from "@/functions/get-user";
-import { trpc } from "@/router";
+import { trpc, queryClient } from "@/router";
 import TopNav from "@/components/top-nav";
 import MilkdownEditor from "@/components/milkdown-editor";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ArrowLeft, FolderPlus, FilePlus, Trash2, Pencil, MoreVertical } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { ArrowLeft, FolderPlus, FilePlus, Trash2, Pencil, MoreVertical, UserPlus, Copy, Link, Clock, Users, X } from "lucide-react";
 import { Folder01Icon, Folder02Icon, File02Icon } from "hugeicons-react";
 import { type TreeViewElement } from "@/components/ui/file-tree";
+import { toast } from "sonner";
+import { env } from "@penslate/env/web";
 
 interface TreeItemWithFolder extends TreeViewElement {
   isFolder: boolean;
@@ -100,6 +119,10 @@ function ProjectDetailComponent() {
   const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(null);
   const [moreMenuOpen, setMoreMenuOpen] = useState<string | null>(null);
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
+  const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
+  const [inviteRole, setInviteRole] = useState<"editor" | "viewer">("editor");
+  const [inviteExpiryHours, setInviteExpiryHours] = useState<string>("never");
+  const [generatedInviteLink, setGeneratedInviteLink] = useState<string | null>(null);
 
   const { data: project, isLoading: projectLoading } = useQuery(
     trpc.projects.getById.queryOptions({ id: projectId })
@@ -113,6 +136,55 @@ function ProjectDetailComponent() {
     ...trpc.projects.getFileContent.queryOptions({ fileId: selectedFileId! }),
     enabled: !!selectedFileId,
   });
+
+  const { data: invites, refetch: refetchInvites } = useQuery({
+    ...trpc.invites.listByProject.queryOptions({ projectId }),
+    enabled: isInviteDialogOpen,
+  });
+
+  const createInviteMutation = useMutation(
+    trpc.invites.create.mutationOptions({
+      onSuccess: (data) => {
+        const baseUrl = window.location.origin;
+        const link = `${baseUrl}/invite/${data.token}`;
+        setGeneratedInviteLink(link);
+        refetchInvites();
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to create invite");
+      },
+    })
+  );
+
+  const revokeInviteMutation = useMutation(
+    trpc.invites.revoke.mutationOptions({
+      onSuccess: () => {
+        toast.success("Invite revoked");
+        refetchInvites();
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to revoke invite");
+      },
+    })
+  );
+
+  const handleCreateInvite = () => {
+    const hours = inviteExpiryHours === "never" ? undefined : parseInt(inviteExpiryHours);
+    createInviteMutation.mutate({
+      projectId,
+      role: inviteRole,
+      expiresInHours: hours,
+    });
+  };
+
+  const handleCopyInviteLink = async (link: string) => {
+    try {
+      await navigator.clipboard.writeText(link);
+      toast.success("Invite link copied to clipboard!");
+    } catch {
+      toast.error("Failed to copy link");
+    }
+  };
 
   const saveFileContentMutation = useMutation(
     trpc.projects.saveFileContent.mutationOptions()
@@ -438,14 +510,158 @@ function ProjectDetailComponent() {
                 </div>
               ) : project ? (
                 <div>
-                  <h1 className="text-2xl font-bold">{project.name}</h1>
-                  <p className="mt-2 text-muted-foreground">
-                    {project.description || "No description"}
-                  </p>
-                  <p className="mt-4 text-sm text-muted-foreground">
-                    Created: {project.createdAt ? new Date(project.createdAt).toLocaleDateString() : "Unknown"}
-                    {project.updatedAt && ` • Updated: ${new Date(project.updatedAt).toLocaleDateString()}`}
-                  </p>
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h1 className="text-2xl font-bold">{project.name}</h1>
+                      <p className="mt-2 text-muted-foreground">
+                        {project.description || "No description"}
+                      </p>
+                      <p className="mt-4 text-sm text-muted-foreground">
+                        Created: {project.createdAt ? new Date(project.createdAt).toLocaleDateString() : "Unknown"}
+                        {project.updatedAt && ` • Updated: ${new Date(project.updatedAt).toLocaleDateString()}`}
+                      </p>
+                    </div>
+                    <Dialog open={isInviteDialogOpen} onOpenChange={(open) => {
+                      setIsInviteDialogOpen(open);
+                      if (!open) {
+                        setGeneratedInviteLink(null);
+                        setInviteRole("editor");
+                        setInviteExpiryHours("never");
+                      }
+                    }}>
+                      <DialogTrigger asChild>
+                        <Button size="sm" variant="outline">
+                          <UserPlus className="mr-1.5 h-4 w-4" />
+                          Invite
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-md">
+                        <DialogHeader>
+                          <DialogTitle>Invite to Project</DialogTitle>
+                          <DialogDescription>
+                            Create a shareable link to invite others to this project.
+                          </DialogDescription>
+                        </DialogHeader>
+
+                        {!generatedInviteLink ? (
+                          <div className="space-y-4 py-2">
+                            <div className="space-y-2">
+                              <Label>Role</Label>
+                              <Select value={inviteRole} onValueChange={(v: "editor" | "viewer") => setInviteRole(v)}>
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="editor">Editor — can edit files</SelectItem>
+                                  <SelectItem value="viewer">Viewer — read-only access</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Expires</Label>
+                              <Select value={inviteExpiryHours} onValueChange={setInviteExpiryHours}>
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="never">Never</SelectItem>
+                                  <SelectItem value="1">1 hour</SelectItem>
+                                  <SelectItem value="24">24 hours</SelectItem>
+                                  <SelectItem value="168">7 days</SelectItem>
+                                  <SelectItem value="720">30 days</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <Button
+                              className="w-full"
+                              onClick={handleCreateInvite}
+                              disabled={createInviteMutation.isPending}
+                            >
+                              <Link className="mr-2 h-4 w-4" />
+                              {createInviteMutation.isPending ? "Generating..." : "Generate Invite Link"}
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="space-y-3 py-2">
+                            <div className="flex items-center gap-2 rounded-md border bg-muted/50 p-3">
+                              <code className="flex-1 text-xs break-all">
+                                {generatedInviteLink}
+                              </code>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 shrink-0"
+                                onClick={() => handleCopyInviteLink(generatedInviteLink)}
+                              >
+                                <Copy className="h-4 w-4" />
+                              </Button>
+                            </div>
+                            <Button
+                              variant="outline"
+                              className="w-full"
+                              onClick={() => setGeneratedInviteLink(null)}
+                            >
+                              Create Another
+                            </Button>
+                          </div>
+                        )}
+
+                        {invites && invites.length > 0 && (
+                          <div className="border-t pt-4">
+                            <h4 className="text-sm font-medium mb-2 flex items-center gap-1.5">
+                              <Users className="h-4 w-4" />
+                              Active Invites ({invites.length})
+                            </h4>
+                            <div className="space-y-2 max-h-40 overflow-auto">
+                              {invites.map((invite) => (
+                                <div
+                                  key={invite.id}
+                                  className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
+                                >
+                                  <div className="flex flex-col gap-0.5">
+                                    <span className="font-medium capitalize">{invite.role}</span>
+                                    <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                      {invite.useCount} use{invite.useCount !== 1 ? "s" : ""}
+                                      {invite.expiresAt && (
+                                        <>
+                                          <Clock className="h-3 w-3" />
+                                          {new Date(invite.expiresAt) < new Date()
+                                            ? "Expired"
+                                            : `Expires ${new Date(invite.expiresAt).toLocaleDateString()}`}
+                                        </>
+                                      )}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7"
+                                      onClick={() => {
+                                        const link = `${window.location.origin}/invite/${invite.token}`;
+                                        handleCopyInviteLink(link);
+                                      }}
+                                    >
+                                      <Copy className="h-3.5 w-3.5" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7 text-destructive hover:text-destructive"
+                                      onClick={() => revokeInviteMutation.mutate({ id: invite.id })}
+                                      disabled={revokeInviteMutation.isPending}
+                                    >
+                                      <X className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </DialogContent>
+                    </Dialog>
+                  </div>
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center py-12">
