@@ -42,12 +42,13 @@ export const Route = createFileRoute("/")({
 
 function HomeComponent() {
   const { session } = Route.useRouteContext();
-  const navigate = useNavigate();
+  const navigate = useNavigate({ from: Route.fullPath });
   const [activeTab, setActiveTab] = useState<"overview" | "settings">(
     "overview"
   );
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [projectName, setProjectName] = useState("");
+  const [projectDescription, setProjectDescription] = useState("");
   const [editingProject, setEditingProject] = useState<{ id: string; name: string } | null>(null);
 
   const { data: projects } = useQuery(trpc.projects.getAll.queryOptions());
@@ -56,6 +57,7 @@ function HomeComponent() {
       onSuccess: () => {
         setIsDialogOpen(false);
         setProjectName("");
+        setProjectDescription("");
         queryClient.invalidateQueries();
       },
     })
@@ -83,7 +85,10 @@ function HomeComponent() {
 
   const handleCreateProject = () => {
     if (projectName.trim()) {
-      createProject.mutate({ name: projectName.trim() });
+      createProject.mutate({ 
+        name: projectName.trim(),
+        description: projectDescription.trim() || undefined 
+      });
     }
   };
 
@@ -123,11 +128,21 @@ function HomeComponent() {
                       Enter a name for your new project.
                     </DialogDescription>
                   </DialogHeader>
-                  <div className="py-4">
+                  <div className="py-4 space-y-4">
                     <Input
                       placeholder="Project name"
                       value={projectName}
                       onChange={(e) => setProjectName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          handleCreateProject();
+                        }
+                      }}
+                    />
+                    <Input
+                      placeholder="Project description (optional)"
+                      value={projectDescription}
+                      onChange={(e) => setProjectDescription(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
                           handleCreateProject();
@@ -193,6 +208,7 @@ function HomeComponent() {
                 <Card
                   key={project.id}
                   className="cursor-pointer transition-colors hover:bg-accent/50"
+                  onClick={() => navigate({ to: "/projects/$projectId", params: { projectId: project.id } })}
                 >
                   <CardHeader>
                     <div className="flex items-start justify-between">
