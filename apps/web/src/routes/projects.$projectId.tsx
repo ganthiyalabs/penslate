@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 
 import { getUser } from "@/functions/get-user";
 import { trpc } from "@/router";
 import TopNav from "@/components/top-nav";
+import MilkdownEditor from "@/components/milkdown-editor";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -98,6 +99,7 @@ function ProjectDetailComponent() {
   const [editName, setEditName] = useState("");
   const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(null);
   const [moreMenuOpen, setMoreMenuOpen] = useState<string | null>(null);
+  const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
 
   const { data: project, isLoading: projectLoading } = useQuery(
     trpc.projects.getById.queryOptions({ id: projectId })
@@ -106,6 +108,24 @@ function ProjectDetailComponent() {
   const { data: filesData, isLoading: filesLoading, refetch } = useQuery(
     trpc.projects.getFoldersAndFiles.queryOptions({ projectId })
   );
+
+  const { data: fileContent, isLoading: fileContentLoading } = useQuery({
+    ...trpc.projects.getFileContent.queryOptions({ fileId: selectedFileId! }),
+    enabled: !!selectedFileId,
+  });
+
+  const saveFileContentMutation = useMutation(
+    trpc.projects.saveFileContent.mutationOptions()
+  );
+
+  const handleSaveContent = useCallback((content: string, yjsState: string) => {
+    if (!selectedFileId) return;
+    saveFileContentMutation.mutate({
+      fileId: selectedFileId,
+      content,
+      yjsState,
+    });
+  }, [selectedFileId, saveFileContentMutation]);
 
   const createFolderMutation = useMutation(
     trpc.projects.createFolder.mutationOptions({
@@ -235,8 +255,8 @@ function ProjectDetailComponent() {
       <TopNav
         user={user}
         activeTab="overview"
-        onTabChange={() => {}}
-        onSignOut={() => {}}
+        onTabChange={() => { }}
+        onSignOut={() => { }}
       />
 
       <div className="flex h-[calc(100vh-64px)]">
@@ -358,51 +378,89 @@ function ProjectDetailComponent() {
                 onDelete={(item) => {
                   handleDelete({ id: item.id, isFolder: item.isFolder });
                 }}
+                onFileClick={(fileId) => setSelectedFileId(fileId)}
               />
             )}
           </div>
         </div>
 
         <div className="flex-1 overflow-auto">
-          <main className="mx-auto max-w-4xl px-6 py-8">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => navigate({ to: "/" })}
-              className="mb-4"
-            >
-              <ArrowLeft className="mr-1 h-4 w-4" />
-              Back to Projects
-            </Button>
-
-            {projectLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <p className="text-muted-foreground">Loading...</p>
-              </div>
-            ) : project ? (
-              <div>
-                <h1 className="text-2xl font-bold">{project.name}</h1>
-                <p className="mt-2 text-muted-foreground">
-                  {project.description || "No description"}
-                </p>
-                <p className="mt-4 text-sm text-muted-foreground">
-                  Created: {project.createdAt ? new Date(project.createdAt).toLocaleDateString() : "Unknown"}
-                  {project.updatedAt && ` • Updated: ${new Date(project.updatedAt).toLocaleDateString()}`}
-                </p>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center py-12">
-                <p className="text-muted-foreground">Project not found</p>
+          {selectedFileId ? (
+            <div className="h-full flex flex-col">
+              <div className="flex items-center gap-2 px-4 py-2 border-b bg-card">
                 <Button
-                  variant="link"
-                  onClick={() => navigate({ to: "/" })}
-                  className="mt-2"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelectedFileId(null)}
                 >
-                  Go back to projects
+                  <ArrowLeft className="mr-1 h-4 w-4" />
+                  Back
                 </Button>
+                <span className="text-sm text-muted-foreground">
+                  {fileContent?.name || "Loading..."}
+                </span>
+                {saveFileContentMutation.isPending && (
+                  <span className="text-xs text-muted-foreground ml-auto">Saving...</span>
+                )}
               </div>
-            )}
-          </main>
+              <div className="flex-1 overflow-auto">
+                {fileContentLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <p className="text-muted-foreground">Loading editor...</p>
+                  </div>
+                ) : (
+                  <MilkdownEditor
+                    key={selectedFileId}
+                    fileId={selectedFileId}
+                    initialContent={fileContent?.content}
+                    initialYjsState={fileContent?.yjsState}
+                    userName={user?.name || "Anonymous"}
+                    onSave={handleSaveContent}
+                  />
+                )}
+              </div>
+            </div>
+          ) : (
+            <main className="mx-auto max-w-4xl px-6 py-8">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => navigate({ to: "/" })}
+                className="mb-4"
+              >
+                <ArrowLeft className="mr-1 h-4 w-4" />
+                Back to Projects
+              </Button>
+
+              {projectLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <p className="text-muted-foreground">Loading...</p>
+                </div>
+              ) : project ? (
+                <div>
+                  <h1 className="text-2xl font-bold">{project.name}</h1>
+                  <p className="mt-2 text-muted-foreground">
+                    {project.description || "No description"}
+                  </p>
+                  <p className="mt-4 text-sm text-muted-foreground">
+                    Created: {project.createdAt ? new Date(project.createdAt).toLocaleDateString() : "Unknown"}
+                    {project.updatedAt && ` • Updated: ${new Date(project.updatedAt).toLocaleDateString()}`}
+                  </p>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <p className="text-muted-foreground">Project not found</p>
+                  <Button
+                    variant="link"
+                    onClick={() => navigate({ to: "/" })}
+                    className="mt-2"
+                  >
+                    Go back to projects
+                  </Button>
+                </div>
+              )}
+            </main>
+          )}
         </div>
       </div>
 
@@ -429,7 +487,7 @@ function ProjectDetailComponent() {
                   New Folder
                 </Button>
               )}
-              
+
               {contextMenuItem.isFolder && (
                 <Button
                   variant="ghost"
@@ -517,6 +575,7 @@ function FileTreeView({
   onCreateFile,
   onRename,
   onDelete,
+  onFileClick,
 }: {
   items: TreeViewElement[];
   expandedItems: string[];
@@ -528,6 +587,7 @@ function FileTreeView({
   onCreateFile: (parentId: string) => void;
   onRename: (item: { id: string; name: string; isFolder: boolean; parentId: string | null }) => void;
   onDelete: (item: { id: string; name: string; isFolder: boolean; parentId: string | null }) => void;
+  onFileClick: (fileId: string) => void;
 }) {
   return (
     <div className="space-y-1">
@@ -544,6 +604,7 @@ function FileTreeView({
           onCreateFile={onCreateFile}
           onRename={onRename}
           onDelete={onDelete}
+          onFileClick={onFileClick}
           level={0}
         />
       ))}
@@ -562,6 +623,7 @@ function FileTreeItem({
   onCreateFile,
   onRename,
   onDelete,
+  onFileClick,
   level,
 }: {
   item: TreeViewElement;
@@ -574,6 +636,7 @@ function FileTreeItem({
   onCreateFile: (parentId: string) => void;
   onRename: (item: { id: string; name: string; isFolder: boolean; parentId: string | null }) => void;
   onDelete: (item: { id: string; name: string; isFolder: boolean; parentId: string | null }) => void;
+  onFileClick: (fileId: string) => void;
   level: number;
 }) {
   const hasChildren = item.children && item.children.length > 0;
@@ -584,13 +647,14 @@ function FileTreeItem({
   return (
     <div>
       <div
-        className={`flex items-center gap-1 py-1 px-2 rounded-md text-sm cursor-pointer hover:bg-muted group ${
-          item.isSelectable ? "" : "font-medium"
-        }`}
+        className={`flex items-center gap-1 py-1 px-2 rounded-md text-sm cursor-pointer hover:bg-muted group ${item.isSelectable ? "" : "font-medium"
+          }`}
         style={{ paddingLeft: `${level * 12 + 8}px` }}
         onClick={() => {
-          if (hasChildren) {
+          if (isFolder) {
             onToggleExpand(item.id);
+          } else {
+            onFileClick(item.id);
           }
         }}
         onContextMenu={(e) => onContextMenu(e, { id: item.id, name: item.name, isFolder, parentId: null })}
@@ -687,6 +751,7 @@ function FileTreeItem({
               onCreateFile={onCreateFile}
               onRename={onRename}
               onDelete={onDelete}
+              onFileClick={onFileClick}
               level={level + 1}
             />
           ))}

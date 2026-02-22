@@ -142,10 +142,10 @@ export const projectRouter = router({
     }),
 
   createFolder: protectedProcedure
-    .input(z.object({ 
-      projectId: z.string(), 
+    .input(z.object({
+      projectId: z.string(),
       name: z.string().min(1),
-      parentId: z.string().nullable() 
+      parentId: z.string().nullable()
     }))
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.session?.user?.id;
@@ -156,7 +156,7 @@ export const projectRouter = router({
         .from(projectMembers)
         .where(eq(projectMembers.projectId, input.projectId))
         .limit(1);
-      
+
       if (!member) throw new Error("Not authorized to access this project");
 
       const [folder] = await ctx.db
@@ -173,10 +173,10 @@ export const projectRouter = router({
     }),
 
   createFile: protectedProcedure
-    .input(z.object({ 
-      projectId: z.string(), 
+    .input(z.object({
+      projectId: z.string(),
       name: z.string().min(1),
-      folderId: z.string().nullable() 
+      folderId: z.string().nullable()
     }))
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.session?.user?.id;
@@ -187,7 +187,7 @@ export const projectRouter = router({
         .from(projectMembers)
         .where(eq(projectMembers.projectId, input.projectId))
         .limit(1);
-      
+
       if (!member) throw new Error("Not authorized to access this project");
 
       const [file] = await ctx.db
@@ -236,6 +236,49 @@ export const projectRouter = router({
         .set({ name: input.name })
         .where(eq(files.id, input.id))
         .returning();
+      return file;
+    }),
+
+  getFileContent: protectedProcedure
+    .input(z.object({ fileId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.session?.user?.id;
+      if (!userId) throw new Error("Not authenticated");
+
+      const [file] = await ctx.db
+        .select({
+          id: files.id,
+          name: files.name,
+          content: files.content,
+          yjsState: files.yjsState,
+        })
+        .from(files)
+        .where(eq(files.id, input.fileId));
+
+      if (!file) throw new Error("File not found");
+      return file;
+    }),
+
+  saveFileContent: protectedProcedure
+    .input(z.object({
+      fileId: z.string(),
+      content: z.string().optional(),
+      yjsState: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session?.user?.id;
+      if (!userId) throw new Error("Not authenticated");
+
+      const updateData: Record<string, string | undefined> = {};
+      if (input.content !== undefined) updateData.content = input.content;
+      if (input.yjsState !== undefined) updateData.yjsState = input.yjsState;
+
+      const [file] = await ctx.db
+        .update(files)
+        .set(updateData)
+        .where(eq(files.id, input.fileId))
+        .returning();
+
       return file;
     }),
 });

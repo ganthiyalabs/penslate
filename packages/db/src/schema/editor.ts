@@ -83,6 +83,7 @@ export const files = pgTable(
       .references(() => folders.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     content: text("content"),
+    yjsState: text("yjs_state"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
