@@ -8,7 +8,8 @@ import TopNav from "@/components/top-nav";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ArrowLeft, FolderPlus, FilePlus, Folder, File, ChevronRight, ChevronDown, Trash2, Pencil, MoreVertical } from "lucide-react";
+import { ArrowLeft, FolderPlus, FilePlus, Trash2, Pencil, MoreVertical } from "lucide-react";
+import { Folder01Icon, Folder02Icon, File02Icon } from "hugeicons-react";
 import { type TreeViewElement } from "@/components/ui/file-tree";
 
 interface TreeItemWithFolder extends TreeViewElement {
@@ -96,6 +97,7 @@ function ProjectDetailComponent() {
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState("");
   const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(null);
+  const [moreMenuOpen, setMoreMenuOpen] = useState<string | null>(null);
 
   const { data: project, isLoading: projectLoading } = useQuery(
     trpc.projects.getById.queryOptions({ id: projectId })
@@ -187,12 +189,13 @@ function ProjectDetailComponent() {
     });
   };
 
-  const handleDelete = () => {
-    if (!contextMenuItem) return;
-    if (contextMenuItem.isFolder) {
-      deleteFolderMutation.mutate({ id: contextMenuItem.id });
+  const handleDelete = (item?: { id: string; isFolder: boolean }) => {
+    const targetItem = item || contextMenuItem;
+    if (!targetItem) return;
+    if (targetItem.isFolder) {
+      deleteFolderMutation.mutate({ id: targetItem.id });
     } else {
-      deleteFileMutation.mutate({ id: contextMenuItem.id });
+      deleteFileMutation.mutate({ id: targetItem.id });
     }
   };
 
@@ -319,7 +322,7 @@ function ProjectDetailComponent() {
               <p className="text-sm text-muted-foreground p-2">Loading...</p>
             ) : fileTree.length === 0 ? (
               <div className="text-center py-8">
-                <Folder className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                <Folder01Icon className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
                 <p className="text-sm text-muted-foreground">No files yet</p>
                 <p className="text-xs text-muted-foreground mt-1">
                   Create a folder or file to get started
@@ -340,6 +343,20 @@ function ProjectDetailComponent() {
                 onCreateInside={(parentId) => {
                   setSelectedFolderId(parentId);
                   setIsCreatingFolder(true);
+                }}
+                moreMenuOpen={moreMenuOpen}
+                setMoreMenuOpen={setMoreMenuOpen}
+                onCreateFile={(parentId) => {
+                  setSelectedFolderId(parentId);
+                  setIsCreatingFile(true);
+                }}
+                onRename={(item) => {
+                  setContextMenuItem(item);
+                  setEditName(item.name);
+                  setIsEditing(true);
+                }}
+                onDelete={(item) => {
+                  handleDelete({ id: item.id, isFolder: item.isFolder });
                 }}
               />
             )}
@@ -393,17 +410,10 @@ function ProjectDetailComponent() {
         <div
           className="fixed z-50"
           style={{ left: contextMenuPosition.x, top: contextMenuPosition.y }}
+          onClick={(e) => e.stopPropagation()}
         >
           <Popover open={!!contextMenuItem} onOpenChange={(open) => !open && setContextMenuItem(null)}>
-            <PopoverTrigger asChild>
-              <div className="fixed inset-0" />
-            </PopoverTrigger>
-            <PopoverContent className="w-48 p-1" side="right" align="start">
-              <div className="text-xs font-medium px-2 py-1.5 text-muted-foreground">
-                {contextMenuItem.name}
-              </div>
-              <div className="border-t my-1" />
-              
+            <PopoverContent className="w-40 p-1" align="start" side="right" onClick={(e) => e.stopPropagation()}>
               {contextMenuItem.isFolder && (
                 <Button
                   variant="ghost"
@@ -441,7 +451,10 @@ function ProjectDetailComponent() {
                 size="sm"
                 className="w-full justify-start h-8 px-2"
                 onClick={() => {
+                  const item = contextMenuItem;
+                  setContextMenuItem(null);
                   setIsEditing(true);
+                  setEditName(item.name);
                 }}
               >
                 <Pencil className="mr-2 h-4 w-4" />
@@ -452,7 +465,7 @@ function ProjectDetailComponent() {
                 variant="ghost"
                 size="sm"
                 className="w-full justify-start h-8 px-2 text-red-600 hover:text-red-600"
-                onClick={handleDelete}
+                onClick={() => handleDelete()}
               >
                 <Trash2 className="mr-2 h-4 w-4" />
                 Delete
@@ -499,12 +512,22 @@ function FileTreeView({
   onToggleExpand,
   onContextMenu,
   onCreateInside,
+  moreMenuOpen,
+  setMoreMenuOpen,
+  onCreateFile,
+  onRename,
+  onDelete,
 }: {
   items: TreeViewElement[];
   expandedItems: string[];
   onToggleExpand: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, item: { id: string; name: string; isFolder: boolean; parentId: string | null }) => void;
   onCreateInside: (parentId: string) => void;
+  moreMenuOpen: string | null;
+  setMoreMenuOpen: (id: string | null) => void;
+  onCreateFile: (parentId: string) => void;
+  onRename: (item: { id: string; name: string; isFolder: boolean; parentId: string | null }) => void;
+  onDelete: (item: { id: string; name: string; isFolder: boolean; parentId: string | null }) => void;
 }) {
   return (
     <div className="space-y-1">
@@ -516,6 +539,11 @@ function FileTreeView({
           onToggleExpand={onToggleExpand}
           onContextMenu={onContextMenu}
           onCreateInside={onCreateInside}
+          moreMenuOpen={moreMenuOpen}
+          setMoreMenuOpen={setMoreMenuOpen}
+          onCreateFile={onCreateFile}
+          onRename={onRename}
+          onDelete={onDelete}
           level={0}
         />
       ))}
@@ -529,6 +557,11 @@ function FileTreeItem({
   onToggleExpand,
   onContextMenu,
   onCreateInside,
+  moreMenuOpen,
+  setMoreMenuOpen,
+  onCreateFile,
+  onRename,
+  onDelete,
   level,
 }: {
   item: TreeViewElement;
@@ -536,11 +569,17 @@ function FileTreeItem({
   onToggleExpand: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, item: { id: string; name: string; isFolder: boolean; parentId: string | null }) => void;
   onCreateInside: (parentId: string) => void;
+  moreMenuOpen: string | null;
+  setMoreMenuOpen: (id: string | null) => void;
+  onCreateFile: (parentId: string) => void;
+  onRename: (item: { id: string; name: string; isFolder: boolean; parentId: string | null }) => void;
+  onDelete: (item: { id: string; name: string; isFolder: boolean; parentId: string | null }) => void;
   level: number;
 }) {
   const hasChildren = item.children && item.children.length > 0;
   const isExpanded = expandedItems.includes(item.id);
   const isFolder = (item as any).isFolder !== false;
+  const isMenuOpen = moreMenuOpen === item.id;
 
   return (
     <div>
@@ -558,28 +597,79 @@ function FileTreeItem({
       >
         {hasChildren ? (
           isExpanded ? (
-            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            <Folder02Icon className="h-4 w-4 text-muted-foreground" />
           ) : (
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            <Folder01Icon className="h-4 w-4 text-muted-foreground" />
           )
         ) : item.isSelectable ? (
-          <File className="h-4 w-4 text-muted-foreground" />
+          <File02Icon className="h-4 w-4 text-muted-foreground" />
         ) : (
-          <Folder className="h-4 w-4 text-muted-foreground" />
+          <Folder01Icon className="h-4 w-4 text-muted-foreground" />
         )}
         <span className="truncate flex-1">{item.name}</span>
         {isFolder && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100"
-            onClick={(e) => {
-              e.stopPropagation();
-              onCreateInside(item.id);
-            }}
-          >
-            <MoreVertical className="h-3 w-3" />
-          </Button>
+          <Popover open={isMenuOpen} onOpenChange={(open) => setMoreMenuOpen(open ? item.id : null)}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <MoreVertical className="h-3 w-3" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-40 p-1" align="end">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full justify-start h-8 px-2"
+                onClick={() => {
+                  setMoreMenuOpen(null);
+                  onCreateInside(item.id);
+                }}
+              >
+                <FolderPlus className="mr-2 h-4 w-4" />
+                New Folder
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full justify-start h-8 px-2"
+                onClick={() => {
+                  setMoreMenuOpen(null);
+                  onCreateFile(item.id);
+                }}
+              >
+                <FilePlus className="mr-2 h-4 w-4" />
+                New File
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full justify-start h-8 px-2"
+                onClick={() => {
+                  setMoreMenuOpen(null);
+                  onRename({ id: item.id, name: item.name, isFolder, parentId: null });
+                }}
+              >
+                <Pencil className="mr-2 h-4 w-4" />
+                Rename
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full justify-start h-8 px-2 text-red-600 hover:text-red-600"
+                onClick={() => {
+                  setMoreMenuOpen(null);
+                  onDelete({ id: item.id, name: item.name, isFolder, parentId: null });
+                }}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete
+              </Button>
+            </PopoverContent>
+          </Popover>
         )}
       </div>
       {hasChildren && isExpanded && (
@@ -592,6 +682,11 @@ function FileTreeItem({
               onToggleExpand={onToggleExpand}
               onContextMenu={onContextMenu}
               onCreateInside={onCreateInside}
+              moreMenuOpen={moreMenuOpen}
+              setMoreMenuOpen={setMoreMenuOpen}
+              onCreateFile={onCreateFile}
+              onRename={onRename}
+              onDelete={onDelete}
               level={level + 1}
             />
           ))}
