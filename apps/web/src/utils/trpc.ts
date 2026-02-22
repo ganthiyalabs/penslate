@@ -1,4 +1,4 @@
-import type { AppRouter } from "@penslate/api/routers/index";
+import type { AppRouter } from "@penslate/api";
 
 import { createTRPCContext } from "@trpc/tanstack-react-query";
 

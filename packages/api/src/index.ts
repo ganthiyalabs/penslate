@@ -1,6 +1,7 @@
 import { initTRPC, TRPCError } from "@trpc/server";
 
 import type { Context } from "./context";
+import { appRouter } from "./routers";
 
 export const t = initTRPC.context<Context>().create();
 
@@ -23,3 +24,6 @@ export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
     },
   });
 });
+
+export { appRouter };
+export type { AppRouter } from "./routers";
