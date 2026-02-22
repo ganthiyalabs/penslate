@@ -12,7 +12,7 @@ import { commonmark } from "@milkdown/kit/preset/commonmark";
 import { listener, listenerCtx } from "@milkdown/kit/plugin/listener";
 import { history } from "@milkdown/kit/plugin/history";
 import { collab, collabServiceCtx } from "@milkdown/plugin-collab";
-import { SupabaseProvider } from "@/lib/yjs-supabase-provider";
+import { SupabaseProvider, type PeerInfo } from "@/lib/yjs-supabase-provider";
 import * as Y from "yjs";
 import { Eye, Code2, Columns2, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,18 @@ interface MilkdownEditorProps {
 
 type ViewMode = "preview" | "source" | "split";
 
+/**
+ * Generate a stable HSL color from a string.
+ */
+function generateUserColor(name: string): string {
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+        hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const hue = Math.abs(hash) % 360;
+    return `hsl(${hue}, 70%, 50%)`;
+}
+
 function MilkdownEditorWithCollab({
     fileId,
     initialContent,
@@ -41,25 +53,39 @@ function MilkdownEditorWithCollab({
     const [viewMode, setViewMode] = useState<ViewMode>("split");
     const [markdownSource, setMarkdownSource] = useState(initialContent || "");
     const markdownRef = useRef(initialContent || "");
+    const [peers, setPeers] = useState<PeerInfo[]>([]);
 
     // Guards to prevent infinite update loops between source ↔ WYSIWYG
     const updatingFromSource = useRef(false);
     const updatingFromEditor = useRef(false);
 
+    const displayName = userName || "Anonymous";
+    const userColor = generateUserColor(displayName);
+
     // Create Yjs provider on mount
     useEffect(() => {
         const doc = new Y.Doc();
-        const provider = new SupabaseProvider(fileId, doc);
+        const provider = new SupabaseProvider(fileId, doc, {
+            userName: displayName,
+            userColor,
+        });
         if (initialYjsState) {
             provider.loadInitialState(initialYjsState);
         }
         providerRef.current = provider;
+
+        // Subscribe to peer changes
+        const unsub = provider.onPeersChange((newPeers) => {
+            setPeers(newPeers);
+        });
+
         return () => {
+            unsub();
             if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
             provider.destroy();
             providerRef.current = null;
         };
-    }, [fileId, initialYjsState]);
+    }, [fileId, initialYjsState, displayName, userColor]);
 
     // Auto-save (debounced)
     const triggerAutoSave = useCallback(
@@ -111,15 +137,10 @@ function MilkdownEditorWithCollab({
         const timer = setTimeout(() => {
             try {
                 const collabService = editor.ctx.get(collabServiceCtx);
-                collabService.bindDoc(provider.doc).setAwareness(provider.awareness);
-                if (userName) {
-                    provider.awareness.setLocalStateField("user", {
-                        name: userName,
-                        color: `#${Math.floor(Math.random() * 16777215)
-                            .toString(16)
-                            .padStart(6, "0")}`,
-                    });
-                }
+                collabService
+                    .bindDoc(provider.doc)
+                    .setAwareness(provider.awareness);
+
                 if (!initialYjsState && initialContent) {
                     collabService.applyTemplate(initialContent);
                 }
@@ -131,7 +152,7 @@ function MilkdownEditorWithCollab({
         }, 100);
 
         return () => clearTimeout(timer);
-    }, [get, userName, initialContent, initialYjsState]);
+    }, [get, initialContent, initialYjsState]);
 
     // Source textarea → WYSIWYG editor sync
     const handleSourceChange = useCallback(
@@ -214,6 +235,11 @@ function MilkdownEditorWithCollab({
         [viewMode, get]
     );
 
+    // Filter out self from peers for the indicator
+    const otherPeers = peers.filter(
+        (p) => providerRef.current && p.clientId !== providerRef.current.doc.clientID
+    );
+
     return (
         <div className="milkdown-dual-editor">
             {/* Toolbar */}
@@ -247,15 +273,48 @@ function MilkdownEditorWithCollab({
                         <span>Source</span>
                     </button>
                 </div>
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 text-xs"
-                    onClick={handleManualSave}
-                >
-                    <Save className="h-3.5 w-3.5 mr-1" />
-                    Save
-                </Button>
+
+                <div className="editor-toolbar-right">
+                    {/* Presence indicators */}
+                    {otherPeers.length > 0 && (
+                        <div className="presence-indicators">
+                            {otherPeers.slice(0, 5).map((peer) => (
+                                <div
+                                    key={peer.clientId}
+                                    className="presence-avatar"
+                                    style={{ backgroundColor: peer.color }}
+                                    title={peer.name}
+                                >
+                                    {peer.name.charAt(0).toUpperCase()}
+                                </div>
+                            ))}
+                            {otherPeers.length > 5 && (
+                                <div className="presence-avatar presence-overflow">
+                                    +{otherPeers.length - 5}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Self indicator */}
+                    <div
+                        className="presence-avatar presence-self"
+                        style={{ backgroundColor: userColor }}
+                        title={`${displayName} (you)`}
+                    >
+                        {displayName.charAt(0).toUpperCase()}
+                    </div>
+
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        onClick={handleManualSave}
+                    >
+                        <Save className="h-3.5 w-3.5 mr-1" />
+                        Save
+                    </Button>
+                </div>
             </div>
 
             {/* Editor area */}
