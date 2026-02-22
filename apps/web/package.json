@@ -12,6 +12,7 @@
     "@penslate/api": "workspace:*",
     "@penslate/auth": "workspace:*",
     "@penslate/env": "workspace:*",
+    "@radix-ui/react-popover": "^1.1.15",
     "@tailwindcss/vite": "^4.1.8",
     "@tanstack/react-form": "^1.28.0",
     "@tanstack/react-query": "^5.80.6",

@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
+import { PlusIcon } from "lucide-react";
 
 import { getUser } from "@/functions/get-user";
 import { authClient } from "@/lib/auth-client";
 import TopNav from "@/components/top-nav";
+import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export const Route = createFileRoute("/")({
@@ -87,7 +89,13 @@ function HomeComponent() {
       <main className="mx-auto max-w-6xl px-6 py-8">
         {activeTab === "overview" && (
           <div>
-            <h2 className="mb-6 text-lg font-semibold">Projects</h2>
+            <div className="mb-6 flex items-center justify-between">
+              <h2 className="text-lg font-semibold">Projects</h2>
+              <Button size="sm">
+                <PlusIcon className="mr-1 h-4 w-4" />
+                New Project
+              </Button>
+            </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {MOCK_PROJECTS.map((project) => (
                 <Card
