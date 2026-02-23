@@ -50,9 +50,11 @@ function MilkdownEditorWithCollab({
 }: MilkdownEditorProps) {
     const providerRef = useRef<SupabaseProvider | null>(null);
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const parseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [viewMode, setViewMode] = useState<ViewMode>("split");
-    const [markdownSource, setMarkdownSource] = useState(initialContent || "");
     const markdownRef = useRef(initialContent || "");
+    const sourceTextareaRef = useRef<HTMLTextAreaElement>(null);
+    const sourceValueRef = useRef(initialContent || "");
     const [peers, setPeers] = useState<PeerInfo[]>([]);
 
     // Guards to prevent infinite update loops between source ↔ WYSIWYG
@@ -113,7 +115,10 @@ function MilkdownEditorWithCollab({
                     if (updatingFromSource.current) return; // skip echo
                     updatingFromEditor.current = true;
                     markdownRef.current = markdown;
-                    setMarkdownSource(markdown);
+                    sourceValueRef.current = markdown;
+                    if (sourceTextareaRef.current) {
+                        sourceTextareaRef.current.value = markdown;
+                    }
                     triggerAutoSave(markdown);
                     // Reset flag after React flushes
                     requestAnimationFrame(() => {
@@ -154,39 +159,78 @@ function MilkdownEditorWithCollab({
         return () => clearTimeout(timer);
     }, [get, initialContent, initialYjsState]);
 
-    // Source textarea → WYSIWYG editor sync
+    // Sync remote Yjs (collab) changes → source textarea
+    useEffect(() => {
+        const editor = get();
+        const provider = providerRef.current;
+        if (!editor || !provider) return;
+
+        let syncTimer: ReturnType<typeof setTimeout> | null = null;
+
+        const handleYjsUpdate = () => {
+            // Don't sync if the user is actively editing in source mode
+            if (updatingFromSource.current) return;
+
+            if (syncTimer) clearTimeout(syncTimer);
+            syncTimer = setTimeout(() => {
+                try {
+                    const serializer = editor.ctx.get(serializerCtx);
+                    const view = editor.ctx.get(editorViewCtx);
+                    const md = serializer(view.state.doc);
+                    markdownRef.current = md;
+                    sourceValueRef.current = md;
+                    if (sourceTextareaRef.current) {
+                        sourceTextareaRef.current.value = md;
+                    }
+                } catch {
+                    // editor may not be fully ready yet
+                }
+            }, 200);
+        };
+
+        provider.doc.on("update", handleYjsUpdate);
+
+        return () => {
+            provider.doc.off("update", handleYjsUpdate);
+            if (syncTimer) clearTimeout(syncTimer);
+        };
+    }, [get]);
+
+    // Source textarea → WYSIWYG editor sync (debounced)
     const handleSourceChange = useCallback(
         (value: string) => {
-            if (updatingFromEditor.current) return; // skip echo
+            if (updatingFromEditor.current) return;
 
-            setMarkdownSource(value);
+            sourceValueRef.current = value;
             markdownRef.current = value;
             triggerAutoSave(value);
 
-            // Parse markdown → update ProseMirror document
-            updatingFromSource.current = true;
-            try {
-                const editor = get();
-                if (editor) {
-                    const parser = editor.ctx.get(parserCtx);
-                    const view = editor.ctx.get(editorViewCtx);
-                    const newDoc = parser(value);
-                    if (newDoc) {
-                        const { state } = view;
-                        const tr = state.tr.replaceWith(
-                            0,
-                            state.doc.content.size,
-                            newDoc.content
-                        );
-                        view.dispatch(tr);
+            if (parseTimerRef.current) clearTimeout(parseTimerRef.current);
+            parseTimerRef.current = setTimeout(() => {
+                updatingFromSource.current = true;
+                try {
+                    const editor = get();
+                    if (editor) {
+                        const parser = editor.ctx.get(parserCtx);
+                        const view = editor.ctx.get(editorViewCtx);
+                        const newDoc = parser(value);
+                        if (newDoc) {
+                            const { state } = view;
+                            const tr = state.tr.replaceWith(
+                                0,
+                                state.doc.content.size,
+                                newDoc.content
+                            );
+                            view.dispatch(tr);
+                        }
                     }
+                } catch (e) {
+                    console.warn("Failed to sync source to editor:", e);
                 }
-            } catch (e) {
-                console.warn("Failed to sync source to editor:", e);
-            }
-            requestAnimationFrame(() => {
-                updatingFromSource.current = false;
-            });
+                requestAnimationFrame(() => {
+                    updatingFromSource.current = false;
+                });
+            }, 500);
         },
         [get, triggerAutoSave]
     );
@@ -223,8 +267,10 @@ function MilkdownEditorWithCollab({
                         const serializer = editor.ctx.get(serializerCtx);
                         const view = editor.ctx.get(editorViewCtx);
                         const md = serializer(view.state.doc);
-                        setMarkdownSource(md);
                         markdownRef.current = md;
+                        sourceValueRef.current = md;
+                        // No need to set textarea value directly;
+                        // sourceValueRef.current will be used as defaultValue on mount
                     }
                 } catch {
                     // keep existing source
@@ -324,8 +370,9 @@ function MilkdownEditorWithCollab({
                     <div className="editor-panel source-panel">
                         <div className="panel-label">Markdown</div>
                         <textarea
+                            ref={sourceTextareaRef}
                             className="source-textarea"
-                            value={markdownSource}
+                            defaultValue={sourceValueRef.current}
                             onChange={(e) => handleSourceChange(e.target.value)}
                             spellCheck={false}
                             placeholder="Write markdown here..."

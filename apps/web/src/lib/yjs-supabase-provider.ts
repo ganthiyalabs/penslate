@@ -40,6 +40,14 @@ export class SupabaseProvider {
     private awarenessHeartbeat: ReturnType<typeof setInterval> | null = null;
     private peersChangeListeners: Set<PeersChangeCallback> = new Set();
     private currentPeers: PeerInfo[] = [];
+    private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    private healthCheckTimer: ReturnType<typeof setInterval> | null = null;
+    private reconnectAttempts = 0;
+    private readonly maxReconnectDelay = 30000;
+    private readonly baseReconnectDelay = 1000;
+    private visibilityHandler: (() => void) | null = null;
+    private onlineHandler: (() => void) | null = null;
+    private offlineHandler: (() => void) | null = null;
 
     constructor(
         fileId: string,
@@ -57,6 +65,39 @@ export class SupabaseProvider {
         // Listen for local Yjs updates and broadcast them
         this.doc.on("update", this.handleDocUpdate);
         this.awareness.on("update", this.handleAwarenessUpdate);
+
+        // Reconnect when tab regains focus
+        this.visibilityHandler = () => {
+            if (document.visibilityState === "visible" && !this.destroyed) {
+                log("tab became visible, checking connection...");
+                if (!this.isChannelHealthy()) {
+                    log("channel unhealthy on focus, reconnecting...");
+                    this.reconnect();
+                } else {
+                    // Still connected — re-sync state in case we missed updates
+                    log("still connected, requesting re-sync");
+                    this.channel?.send({
+                        type: "broadcast",
+                        event: "sync-request",
+                        payload: {},
+                    });
+                }
+            }
+        };
+        document.addEventListener("visibilitychange", this.visibilityHandler);
+
+        // Reconnect when browser comes back online
+        this.onlineHandler = () => {
+            if (this.destroyed) return;
+            log("browser came online, reconnecting...");
+            this.reconnect();
+        };
+        this.offlineHandler = () => {
+            log("browser went offline");
+            this.connected = false;
+        };
+        window.addEventListener("online", this.onlineHandler);
+        window.addEventListener("offline", this.offlineHandler);
     }
 
     // ---- Public API ----
@@ -168,7 +209,7 @@ export class SupabaseProvider {
                     const bytes = this.base64ToBytes(data.update);
                     log("RECEIVED sync-response:", bytes.length, "bytes");
                     Y.applyUpdate(this.doc, bytes, "supabase");
-                    
+
                     // Broadcast our awareness so the other client sees our cursor
                     const awarenessUpdate = encodeAwarenessUpdate(this.awareness, [
                         this.doc.clientID,
@@ -195,11 +236,11 @@ export class SupabaseProvider {
         this.channel.on("presence", { event: "leave" }, ({ leftPresences }) => {
             log("PRESENCE leave:", leftPresences);
             if (!this.channel) return;
-            
+
             // Remove awareness states for departed clients
             const presenceState = this.channel.presenceState();
             const leftClientIds: number[] = [];
-            
+
             for (const key of Object.keys(presenceState)) {
                 const clientId = parseInt(key, 10);
                 const presences = presenceState[key];
@@ -208,7 +249,7 @@ export class SupabaseProvider {
                     leftClientIds.push(clientId);
                 }
             }
-            
+
             if (leftClientIds.length > 0) {
                 removeAwarenessStates(this.awareness, leftClientIds, "supabase");
             }
@@ -222,6 +263,7 @@ export class SupabaseProvider {
 
             if (status === "SUBSCRIBED") {
                 this.connected = true;
+                this.reconnectAttempts = 0;
 
                 // Set local awareness state
                 this.awareness.setLocalStateField("user", {
@@ -257,26 +299,52 @@ export class SupabaseProvider {
                     ]);
                     this.broadcastBinary("awareness-update", update);
                 }, 5000);
+
+                // Health check: periodically verify the channel is really alive
+                if (this.healthCheckTimer) clearInterval(this.healthCheckTimer);
+                this.healthCheckTimer = setInterval(() => {
+                    if (this.destroyed) return;
+                    if (!this.isChannelHealthy()) {
+                        log("health check: channel is stale, reconnecting...");
+                        this.reconnect();
+                    }
+                }, 10000);
             } else if (status === "CHANNEL_ERROR") {
                 console.error("[SupabaseProvider] Channel error:", err);
+                this.scheduleReconnect();
             } else if (status === "TIMED_OUT") {
                 console.error("[SupabaseProvider] Channel timed out");
+                this.scheduleReconnect();
+            } else if (status === "CLOSED") {
+                log("channel closed");
+                this.connected = false;
+                this.scheduleReconnect();
             }
         });
     }
 
     /**
      * Disconnect from the Supabase Realtime channel.
+     * Always cleans up even if flag says we're not connected (channel may have silently died).
      */
     disconnect() {
-        if (!this.connected || !this.channel) return;
         log("disconnect");
         if (this.awarenessHeartbeat) {
             clearInterval(this.awarenessHeartbeat);
             this.awarenessHeartbeat = null;
         }
-        supabase.removeChannel(this.channel);
-        this.channel = null;
+        if (this.healthCheckTimer) {
+            clearInterval(this.healthCheckTimer);
+            this.healthCheckTimer = null;
+        }
+        if (this.channel) {
+            try {
+                supabase.removeChannel(this.channel);
+            } catch (e) {
+                log("error removing channel:", e);
+            }
+            this.channel = null;
+        }
         this.connected = false;
     }
 
@@ -286,6 +354,22 @@ export class SupabaseProvider {
     destroy() {
         log("destroy");
         this.destroyed = true;
+        if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = null;
+        }
+        if (this.visibilityHandler) {
+            document.removeEventListener("visibilitychange", this.visibilityHandler);
+            this.visibilityHandler = null;
+        }
+        if (this.onlineHandler) {
+            window.removeEventListener("online", this.onlineHandler);
+            this.onlineHandler = null;
+        }
+        if (this.offlineHandler) {
+            window.removeEventListener("offline", this.offlineHandler);
+            this.offlineHandler = null;
+        }
         // Remove our awareness state so others see us leave
         removeAwarenessStates(this.awareness, [this.doc.clientID], null);
         this.disconnect();
@@ -293,6 +377,56 @@ export class SupabaseProvider {
         this.awareness.off("update", this.handleAwarenessUpdate);
         this.awareness.destroy();
         this.peersChangeListeners.clear();
+    }
+
+    /**
+     * Reconnect immediately: disconnect then connect.
+     */
+    private reconnect() {
+        if (this.destroyed) return;
+        log("reconnecting...");
+        this.disconnect();
+        this.reconnectAttempts = 0;
+        this.connect();
+    }
+
+    /**
+     * Check if the Supabase channel is actually alive (not just our flag).
+     */
+    private isChannelHealthy(): boolean {
+        if (!this.channel || !this.connected) return false;
+        try {
+            // Supabase RealtimeChannel exposes a `state` property
+            const state = (this.channel as unknown as { state: string }).state;
+            if (state && state !== "joined" && state !== "joining") {
+                log("channel state is:", state, "(unhealthy)");
+                return false;
+            }
+            // Also check the underlying socket connection
+            const socket = (this.channel as unknown as { socket: { isConnected: () => boolean } }).socket;
+            if (socket && typeof socket.isConnected === "function" && !socket.isConnected()) {
+                log("socket is disconnected");
+                return false;
+            }
+        } catch {
+            // If we can't read state, assume it's fine
+        }
+        return true;
+    }
+
+    private scheduleReconnect() {
+        if (this.destroyed || this.reconnectTimer) return;
+        const delay = Math.min(
+            this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts),
+            this.maxReconnectDelay
+        );
+        log(`scheduling reconnect in ${delay}ms (attempt ${this.reconnectAttempts + 1})`);
+        this.reconnectTimer = setTimeout(() => {
+            this.reconnectTimer = null;
+            this.reconnectAttempts++;
+            this.disconnect();
+            this.connect();
+        }, delay);
     }
 
     // ---- Private helpers ----
